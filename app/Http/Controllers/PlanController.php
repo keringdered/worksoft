@@ -14,6 +14,7 @@ use App\Models\User;
 use App\Models\UserActiveModule;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
+use Illuminate\Support\Facades\Log;
 use Inertia\Inertia;
 use Inertia\Response;
 
@@ -37,8 +38,8 @@ class PlanController extends Controller
                 ->get();
 
             // Get enabled addons with details
-            $activeModules = AddOn::where('is_enable', 1)->where('for_admin',false)
-                ->whereNotIn('module',User::$superadmin_activated_module)
+            $activeModules = AddOn::where('is_enable', 1)->where('for_admin', false)
+                ->whereNotIn('module', User::$superadmin_activated_module)
                 ->select('module', 'name', 'image', 'monthly_price', 'yearly_price')
                 ->get()
                 ->map(function ($addon) {
@@ -59,7 +60,7 @@ class PlanController extends Controller
                     'is_trial_done' => $user->is_trial_done ?? 0,
                     'trial_expire_date' => $user->trial_expire_date,
                 ];
-                
+
                 // Active Subscription Details
                 if ($user->active_plan) {
                     $activePlanObj = Plan::find($user->active_plan);
@@ -83,7 +84,7 @@ class PlanController extends Controller
                         } else if (empty($user->plan_expire_date)) {
                             $duration = 'lifetime';
                         }
-                        
+
                         $paymentAmount = $latestOrder ? $latestOrder->price : 0;
                         $currency = $latestOrder ? $latestOrder->currency : (admin_setting('defaultCurrency') ?? 'USD');
 
@@ -103,7 +104,7 @@ class PlanController extends Controller
                             'is_free' => $activePlanObj->free_plan == 1
                         ];
 
-                        if($isExpired){
+                        if ($isExpired) {
                             $currentSubscription = null;
                         }
                     }
@@ -129,7 +130,7 @@ class PlanController extends Controller
             $user = Auth::user();
 
             // Get all enabled addons
-            $allAddons = AddOn::where('is_enable', 1)->where('for_admin',false)
+            $allAddons = AddOn::where('is_enable', 1)->where('for_admin', false)
                 ->select('module', 'name', 'image')
                 ->get();
 
@@ -209,7 +210,7 @@ class PlanController extends Controller
             $user = Auth::user();
 
             // Get all enabled addons
-            $allAddons = AddOn::where('is_enable', 1)->where('for_admin',false)
+            $allAddons = AddOn::where('is_enable', 1)->where('for_admin', false)
                 ->select('module', 'name', 'image')
                 ->get();
 
@@ -217,7 +218,7 @@ class PlanController extends Controller
             $availableModules = [];
             if ($user->hasRole('superadmin')) {
                 // Super admin can see all modules except superadmin_activated_module
-                $availableModules = $allAddons->whereNotIn('module',User::$superadmin_activated_module)->map(function ($addon) {
+                $availableModules = $allAddons->whereNotIn('module', User::$superadmin_activated_module)->map(function ($addon) {
                     return [
                         'module' => $addon->module,
                         'alias' => $addon->name,
@@ -261,7 +262,7 @@ class PlanController extends Controller
     {
         if (Auth::user()->can('edit-plans')) {
             $validated = $request->validated();
-            
+
             $plan->name = $validated['name'];
             $plan->description = $validated['description'];
             $plan->number_of_users = $validated['number_of_users'];
@@ -314,15 +315,12 @@ class PlanController extends Controller
             $updateData['name'] = $validated['name'];
         }
 
-        if($request->hasFile('image')){
-            $name = $addon->module . '.'.$request->image->getClientOriginalExtension();
-            $file = upload_file($request,'image',$name,'add-ons');
-            if($file['flag'])
-            {
+        if ($request->hasFile('image')) {
+            $name = $addon->module . '.' . $request->image->getClientOriginalExtension();
+            $file = upload_file($request, 'image', $name, 'add-ons');
+            if ($file['flag']) {
                 $updateData['image'] = $file['url'];
-            }
-            else
-            {
+            } else {
                 return back()->with('error', $file['msg']);
             }
         }
@@ -364,7 +362,7 @@ class PlanController extends Controller
             $user = Auth::user();
 
             // Get enabled addons with details
-            $activeModules = AddOn::where('is_enable', 1)->where('for_admin',false)
+            $activeModules = AddOn::where('is_enable', 1)->where('for_admin', false)
                 ->select('module', 'name', 'image', 'monthly_price', 'yearly_price')
                 ->get()
                 ->map(function ($addon) {
@@ -399,11 +397,11 @@ class PlanController extends Controller
 
     public function startTrial(Plan $plan)
     {
-        $user = Auth::user();  
+        $user = Auth::user();
         // Check if trial already done
         if ($user->is_trial_done == '1') {
             return back()->with('error', __('Your Plan trial already done.'));
-        }           
+        }
 
         $counter = [
             'user_counter' => $plan->number_of_users ?? '0',
@@ -411,16 +409,16 @@ class PlanController extends Controller
         ];
         try {
             // Use assignPlan method similar to old code
-            $result = assignPlan($plan->id, 'Trial', implode(',', $plan->modules ?? []),$counter,  $user->id);
+            $result = assignPlan($plan->id, 'Trial', implode(',', $plan->modules ?? []), $counter,  $user->id);
             if ($result['is_success']) {
                 $user->is_trial_done = 1;
                 $user->save();
-                
+
                 return back()->with('success', __('Your trial has been started.'));
             } else {
                 return back()->with('error', $result['error'] ?? __('Failed to start trial.'));
             }
-        } catch (\Exception $e) {            
+        } catch (\Exception $e) {
             return back()->with('error', __('Plan Not Found.'));
         }
     }
@@ -446,6 +444,8 @@ class PlanController extends Controller
         ];
         $result = assignPlan($plan->id, $duration, implode(',', $plan->modules ?? []), $counter, $user->id);
         $orderID = strtoupper(substr(uniqid(), -12));
+
+        Log::info('result assign', $result);
 
         if ($result['is_success']) {
             $order = new Order();

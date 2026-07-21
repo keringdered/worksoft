@@ -13,6 +13,8 @@ use App\Models\AddOn;
 use Spatie\Permission\Models\Role;
 use App\Services\DynamicStorageService;
 use App\Services\StorageConfigService;
+use AWS\CRT\Log;
+use Illuminate\Support\Facades\Log as FacadesLog;
 
 if (!function_exists('creatorId')) {
     function creatorId()
@@ -46,7 +48,7 @@ if (!function_exists('setSetting')) {
         );
 
         // Clear user-specific cache
-        if (Auth::check() && Auth::user()->type == 'superadmin'){
+        if (Auth::check() && Auth::user()->type == 'superadmin') {
             Cache::forget('admin_settings');
             Cache::forget('admin_settings_public');
         }
@@ -76,14 +78,14 @@ if (!function_exists('getAdminAllSetting')) {
                 'theme_color' => 'themeColor',
                 'sidebar_variant' => 'sidebarVariant',
                 'sidebar_style' => 'sidebarStyle',
-                'layout_direction' => 'layoutDirection', 
+                'layout_direction' => 'layoutDirection',
                 'theme_mode' => 'themeMode',
                 'custom_color' => 'customColor'
             ];
-            
+
             $superadmin = User::where('type', 'superadmin')->first();
             $cookieName = 'theme_settings_' . ($superadmin ? $superadmin->id : 1);
-            
+
             if (\Cookie::get($cookieName)) {
                 $cookieData = json_decode(\Cookie::get($cookieName), true);
                 if (is_array($cookieData)) {
@@ -131,11 +133,11 @@ if (!function_exists('getCompanyAllSetting')) {
                     'theme_color' => 'themeColor',
                     'sidebar_variant' => 'sidebarVariant',
                     'sidebar_style' => 'sidebarStyle',
-                    'layout_direction' => 'layoutDirection', 
+                    'layout_direction' => 'layoutDirection',
                     'theme_mode' => 'themeMode',
                     'custom_color' => 'customColor'
                 ];
-                
+
                 $cookieName = 'theme_settings_' . (Auth::check() ? creatorId() : $user->id);
                 if (\Cookie::get($cookieName)) {
                     $cookieData = json_decode(\Cookie::get($cookieName), true);
@@ -241,7 +243,7 @@ if (!function_exists('ActivatedModule')) {
                 if ($user) {
                     $active_module = UserActiveModule::where('user_id', $user->id)->pluck('module')->toArray();
                     $user_active_module = array_values(array_intersect($available_modules, $active_module));
-                    $user_active_module = array_values(array_unique(array_merge($activated_module,$user_active_module)));
+                    $user_active_module = array_values(array_unique(array_merge($activated_module, $user_active_module)));
                 }
             }
         } else {
@@ -329,21 +331,27 @@ if (!function_exists('assignPlan')) {
             } else {
                 $modules_array = is_array($plan->modules) ? $plan->modules : [];
             }
-           if(!empty($modules))
-            {
+            Log::info('Found Modules', $modules_array);
+
+            if (!empty($modules)) {
                 UserActiveModule::where('user_id', $user->id)->delete();
 
-                $modules_array = explode(',',$modules);
+                $modules_array = explode(',', $modules);
                 $currentActiveModules = UserActiveModule::where('user_id', $user->id)->pluck('module')->toArray();
-                
+
                 $user_module = $currentActiveModules;
                 foreach ($modules_array as $module) {
-                    if(!in_array($module,$user_module)){
-                        array_push($user_module,$module);
+                    if (!in_array($module, $user_module)) {
+                        array_push($user_module, $module);
                     }
                 }
 
+                FacadesLog::info('user-modules:' . count($user_module), $user_module);
+
                 $newModules = array_diff($user_module, $currentActiveModules);
+
+                FacadesLog::info('new Modules:' . count($newModules), $newModules);
+
                 foreach ($newModules as $moduleName) {
                     UserActiveModule::create([
                         'user_id' => $user->id,
@@ -356,12 +364,14 @@ if (!function_exists('assignPlan')) {
 
                 if (!empty($client_role)) {
                     GivePermissionToRole::dispatch($client_role->id, 'client', $modules);
+                    FacadesLog::info('Dispatching client permissions');
                 }
                 if (!empty($staff_role)) {
                     GivePermissionToRole::dispatch($staff_role->id, 'staff', $modules);
+                    FacadesLog::info('Dispatching client permissions');
                 }
             }
-            
+
             // Set user limits from plan (don't modify the plan itself)
             $user->total_user = $plan->number_of_users;
             $user->storage_limit = $plan->storage_limit;
@@ -542,7 +552,7 @@ if (!function_exists('SetConfigEmail')) {
                 $user_id = User::where('type', 'superadmin')->first()->id;
                 $company_settings = getCompanyAllSetting($user_id);
             }
-            if(empty($company_settings['email_host'])) {
+            if (empty($company_settings['email_host'])) {
                 throw new \Exception(__('Email host is not configured'));
             }
 
@@ -590,7 +600,7 @@ if (!function_exists('upload_file')) {
             if (empty($extension) || !in_array($extension, $allowed_extensions)) {
                 return [
                     'flag' => 0,
-                    'msg'  => 'The ' . $key_name . ' must be a file of type: ' .$config['allowed_file_types']. '.',
+                    'msg'  => 'The ' . $key_name . ' must be a file of type: ' . $config['allowed_file_types'] . '.',
                 ];
             }
 
@@ -615,14 +625,13 @@ if (!function_exists('upload_file')) {
             $activeDisk = StorageConfigService::getActiveDisk();
 
             // Store file directly to storage
-            $file->storeAs( 'media/' . $path, $name, $activeDisk);
+            $file->storeAs('media/' . $path, $name, $activeDisk);
 
             return [
                 'flag' => 1,
                 'msg' => 'success',
-                'url' => $path.'/'.$name
+                'url' => $path . '/' . $name
             ];
-
         } catch (\Exception $e) {
             return [
                 'flag' => 0,
@@ -695,7 +704,6 @@ if (!function_exists('upload_base64_file')) {
             }
 
             return ['flag' => 0, 'msg' => 'Invalid base64 format'];
-
         } catch (\Exception $e) {
             return ['flag' => 0, 'msg' => $e->getMessage()];
         }
@@ -723,7 +731,6 @@ if (!function_exists('delete_file')) {
                 'flag' => 0,
                 'msg' => 'File not found'
             ];
-
         } catch (\Exception $e) {
             return [
                 'flag' => 0,
@@ -805,6 +812,3 @@ if (!function_exists('parseBrowserData')) {
         ];
     }
 }
-
-
-
