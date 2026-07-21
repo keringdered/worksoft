@@ -331,7 +331,7 @@ if (!function_exists('assignPlan')) {
             } else {
                 $modules_array = is_array($plan->modules) ? $plan->modules : [];
             }
-            Log::info('Found Modules', $modules_array);
+            FacadesLog::info('Found Modules', $modules_array);
 
             if (!empty($modules)) {
                 UserActiveModule::where('user_id', $user->id)->delete();
